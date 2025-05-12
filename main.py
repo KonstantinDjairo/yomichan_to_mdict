@@ -35,10 +35,18 @@ def process_json_file(file_path):
             print("Successfully parsed JSON:", data)
         except dirtyjson.JSONDecodeError as e:
             print(f"Error decoding JSON: {e}")
-
+        print("start position:", start_pos, "\n")
+        print("delimiter", end_delim, "\ntamanho:", len(end_delim), "\n")   '''
+                                                                            basically what's wrong is that it's failing to calculate
+                                                                            the next chunck of json.
+                                                                            '''
         # needs fixing:
         # Move past the end delimiter
-        start_pos = end_pos + len(end_delim)
+        start_pos = end_pos + len(end_delim)  ''' the failure in the computation occurs because
+                                                  it uses the size of the delimiter, which makes no sense.
+                                                  we should instead have a separated function to seek the next start position,
+                                                  which is always of form: '---\n'
+                                              '''
 
 
 process_json_file('input.txt')
