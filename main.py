@@ -1,52 +1,46 @@
 # the json's used yomichan are so broken that we need this lib.
 import dirtyjson
+from tqdm import tqdm
 
-def process_json_file(file_path):
+def find_next_start(content, start, delimiter):
+    """Find the next valid start position after current block"""
+    next_start = content.find(delimiter, start)
+    return next_start if next_start != -1 else -1
+
+def count_blocks(content, delimiter):
+    return content.count(delimiter)
+
+def process_json_file(file_path, output_path):
     with open(file_path, 'rb') as f:
         content = f.read()
 
-    # Define the start and end delimiters
-    start_delim = b'---\n'
-    end_delim = b'\n---'
-
-    # Initialize the starting position
+    delimiter = b'--------------------------------------------------\n'
+    delim_len = len(delimiter)
+    total_blocks = count_blocks(content, delimiter)
     start_pos = 0
 
-    while True:
-        # Find the start of the next JSON object
-        start_pos = content.find(start_delim, start_pos)
-        if start_pos == -1:
-            break  # No more JSON objects
+    with open(output_path, 'w', encoding='utf-8') as out, tqdm(total=total_blocks, desc="Processing blocks") as pbar:
+        while True:
+            start_pos = find_next_start(content, start_pos, delimiter)
+            if start_pos == -1:
+                break
 
-        # Move past the start delimiter
-        start_pos += len(start_delim)
+            end_pos = find_next_start(content, start_pos + delim_len, delimiter)
+            if end_pos == -1:
+                break
 
-        # Find the end of the JSON object
-        end_pos = content.find(end_delim, start_pos)
-        if end_pos == -1:
-            break  # No end delimiter found, malformed JSON
+            json_bytes = content[start_pos + delim_len:end_pos]
+            start_pos = end_pos
+            pbar.update(1)
 
-        # Extract the JSON string
-        json_str = content[start_pos:end_pos].decode('utf-8')
+            json_string = json_bytes.decode('utf-8', errors='replace').strip()
 
-        try:
-            # Attempt to parse the JSON string
-            data = dirtyjson.loads(json_str)
-            print("Successfully parsed JSON:", data)
-        except dirtyjson.JSONDecodeError as e:
-            print(f"Error decoding JSON: {e}")
-        print("start position:", start_pos, "\n")
-        print("delimiter", end_delim, "\ntamanho:", len(end_delim), "\n")   '''
-                                                                            basically what's wrong is that it's failing to calculate
-                                                                            the next chunck of json.
-                                                                            '''
-        # needs fixing:
-        # Move past the end delimiter
-        start_pos = end_pos + len(end_delim)  ''' the failure in the computation occurs because
-                                                  it uses the size of the delimiter, which makes no sense.
-                                                  we should instead have a separated function to seek the next start position,
-                                                  which is always of form: '---\n'
-                                              '''
+            try:
+                parsed = dirtyjson.loads(json_string)
+                if isinstance(parsed, list) and parsed:
+                    out.write("headword: " + str(parsed[0]) + '\n')
+                    out.write("content: " + str(parsed) + '\n\n')
+            except Exception:
+                continue  # silently skip bad blocks
 
-
-process_json_file('input.txt')
+process_json_file('input.txt', 'output.txt')
