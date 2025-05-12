@@ -1,83 +1,44 @@
-import simdjson
-import os
-import re
-from tqdm import tqdm
-from pathlib import Path
+# the json's used yomichan are so broken that we need this lib.
+import dirtyjson
 
-def natural_sort_key(s):
-    return [int(text) if text.isdigit() else text.lower() 
-            for text in re.split(r'(\d+)', s)]
+def process_json_file(file_path):
+    with open(file_path, 'rb') as f:
+        content = f.read()
 
-def process_entry(entry, output_dir):
-    """Process individual entries and save as separate files"""
-    try:
-        # Extract main word (親字)
-        headword = ""
-        content = []
-        
-        # Recursive processing function
-        def parse_node(node, depth=0):
-            nonlocal headword
-            if isinstance(node, simdjson.Object):
-                for key in node.keys():
-                    value = node[key]
-                    if key == "親字":
-                        headword = str(value)
-                    content.append(f"{'  ' * depth}{key}:")
-                    parse_node(value, depth + 1)
-            elif isinstance(node, simdjson.Array):
-                for idx, item in enumerate(node):
-                    content.append(f"{'  ' * depth}[{idx}]:")
-                    parse_node(item, depth + 1)
-            else:
-                content.append(f"{'  ' * depth}{node}")
+    # Define the start and end delimiters
+    start_delim = b'---\n'
+    end_delim = b'\n---'
 
-        parse_node(entry)
-        
-        if headword:
-            # Sanitize filename
-            safe_headword = re.sub(r'[\\/*?:"<>|]', "", headword)
-            file_path = output_dir / f"{safe_headword}.txt"
-            
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(f"{headword}\n")
-                f.write("<html><body>")
-                f.write("</body></html>".join(content))
-                f.write("\n</>")
-                
-            return True
-        return False
-        
-    except Exception as e:
-        print(f"Error processing entry: {str(e)}")
-        return False
+    # Initialize the starting position
+    start_pos = 0
 
-# Config
-json_dir = Path("./")
-output_dir = Path("./articles")
-output_dir.mkdir(exist_ok=True)
+    while True:
+        # Find the start of the next JSON object
+        start_pos = content.find(start_delim, start_pos)
+        if start_pos == -1:
+            break  # No more JSON objects
 
-# Get and sort files naturally
-json_files = sorted(
-    [f for f in json_dir.iterdir() 
-     if f.name.startswith("term_bank") and f.suffix == ".json"],
-    key=lambda x: natural_sort_key(x.name)
-)
+        # Move past the start delimiter
+        start_pos += len(start_delim)
 
-# Process all files
-total_entries = 0
-for json_file in tqdm(json_files, desc="Processing JSON files"):
-    try:
-        parser = simdjson.Parser()
-        with open(json_file, "rb") as f:
-            doc = parser.parse(f.read())
-            entries = doc.as_list() if isinstance(doc, simdjson.Array) else [doc]
-            
-            for entry in entries:
-                if process_entry(entry, output_dir):
-                    total_entries += 1
-                    
-    except Exception as e:
-        print(f"Error processing {json_file.name}: {str(e)}")
+        # Find the end of the JSON object
+        end_pos = content.find(end_delim, start_pos)
+        if end_pos == -1:
+            break  # No end delimiter found, malformed JSON
 
-print(f"\nProcessed {total_entries} entries. Files saved to {output_dir}")
+        # Extract the JSON string
+        json_str = content[start_pos:end_pos].decode('utf-8')
+
+        try:
+            # Attempt to parse the JSON string
+            data = dirtyjson.loads(json_str)
+            print("Successfully parsed JSON:", data)
+        except dirtyjson.JSONDecodeError as e:
+            print(f"Error decoding JSON: {e}")
+
+        # needs fixing:
+        # Move past the end delimiter
+        start_pos = end_pos + len(end_delim)
+
+
+process_json_file('input.txt')
